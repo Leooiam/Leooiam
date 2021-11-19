@@ -1,0 +1,72 @@
+SELECT 
+    city,
+    barrio,
+    AVG(precio_total) AS avg_precio,
+    AVG(precio_total / area) AS avg_precio_m2,
+    COUNT(id) AS num_inmuebles
+SELECT 
+    city,
+    CASE WHEN barrio LIKE '%cedritos' AND city = 'bogota' THEN 'cedritos'
+        WHEN barrio LIKE '%chapinero' AND city = 'bogota' THEN 'chapinero'
+        WHEN barrio LIKE '%chico%' AND city = 'bogota' THEN 'chico'
+        WHEN barrio LIKE '%laureles' AND city = 'medellin' THEN 'laureles'
+        WHEN barrio LIKE '%poblado%' AND city = 'medellin' THEN 'poblado'
+        WHEN barrio LIKE '%calasanz' AND city = 'medellin' THEN 'calasanz'
+    END AS barrio_agrupado,
+    AVG(precio_total) AS avg_precio,
+    AVG(precio_total / area) AS avg_precio_m2,
+    COUNT(id) AS num_inmuebles
+FROM (
+        SELECT 
+            t1.city,
+            t1.total_price AS precio_total,
+            t1.area,
+            t1.neighborhood AS barrio,
+            CAST(t1.advert.id AS string) AS id
+        FROM
+            (SELECT  
+                rank () OVER(PARTITION BY advert.id ORDER BY date(extraction_date) desc) as rnk,
+                city,
+                advert,
+                total_price,
+                area,
+                neighborhood
+            FROM 
+                `aptuno-data.scraper.fincaraiz`) AS t1
+        WHERE (t1.city = 'bogota' AND t1.total_price < 5700000) OR
+                (t1.city = 'medellin' AND t1.total_price < 4500000)
+                AND rnk = 1
+                AND area !=0
+                AND area is not null
+        UNION ALL
+        SELECT
+            t2.city,
+            t2.total_price AS precio_total,
+            t2.area,
+            t2.neighborhood AS barrio,
+            t2.advert.id AS id
+        FROM 
+            (SELECT  
+                rank () OVER(PARTITION BY advert.id ORDER BY date(extraction_date) desc) as rnk,
+                city,
+                advert,
+                total_price,
+                area,
+                neighborhood
+            FROM 
+                `aptuno-data.scraper.metrocuadrado`) AS t2
+        WHERE (t2.city = 'bogota' AND t2.total_price BETWEEN  500000 AND 5700000) OR
+                (t2.city = 'medellin' AND t2.total_price BETWEEN 500000 AND  4500000)
+                AND rnk = 1
+                AND area != 0
+                AND area is not null
+                )
+    WHERE area is not null and area > 0 
+    AND (barrio LIKE '%cedritos%'
+    OR barrio LIKE '%chapinero%'
+    OR barrio LIKE '%chico%'
+    OR barrio LIKE '%laureles%'
+    OR barrio LIKE '%poblado%'
+    OR barrio LIKE '%calasanz%')
+GROUP BY barrio_agrupado, city
+ORDER BY num_inmuebles DESC
